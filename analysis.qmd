@@ -1,0 +1,292 @@
+---
+title: "Statistical inference"
+author: Sicheng Wang
+---
+
+```{r load-packages}
+#| label: load-packages
+#| message: false
+
+# Load packages
+library(readr)        # reading/ writing datasets
+library(kableExtra)   # for table formatting
+library(dplyr)        # basic data manipulation
+library(skimr)        # for data summaries
+library(qtalrkit)     # data dictionary creation
+library(ggplot2)      # plotting
+library(fs)           # file system operations
+library(infer)        # for statistical inference
+library(rvest)        # for web scraping
+library(purrr)        # for working with functions
+library(udpipe)       # for annotation
+```
+
+## Description
+
+### Data
+
+<!--
+
+the name and/ or source of the data
+the nature of the data
+the outcome variable and the predictor variable(s)
+
+-->
+
+(@) The Europarl corpus of Native, Non-native and Translated Texts - ENNTT can be downloaded by [link](https://github.com/senisioi/enntt-release).
+
+(@) It contains text and annotations.
+
+(@) The predictor variables are the number of T-units in the text, the number of words in the text, while the outcome variable is syntactic complexity.
+
+```{r, cache: true}
+#| label: acquire-data
+#| echo: false
+#| message: false
+
+# Acquire ---------------
+file_url <- "https://github.com/nlp-unibuc/nlp-unibuc-website/releases/download/v1.0/ENNTT.tar.gz"
+
+temp_file <- tempfile()
+
+extract_to_dir <- "../data/original/"
+
+if(!dir_exists(extract_to_dir)) {
+download.file(url = file_url, destfile = temp_file)
+  
+untar(tarfile = temp_file, exdir = extract_to_dir)
+}
+```
+
+```{r, cache:true}
+#| label: curate-data
+#| echo: false
+#| message: false
+
+#Curate
+
+# Read in *.dat* file as HTML
+ns_dat_lines <-
+  read_html("../data/original/ENNTT/natives.dat") |>
+  html_elements("line")
+
+nns_dat_lines <-
+  read_html("../data/original/ENNTT/nonnatives.dat") |>
+  html_elements("line")
+
+tra_dat_lines <-
+  read_html("../data/original/ENNTT/translations.dat") |>
+  html_elements("line")
+
+# Function to extract attributes from line node
+extract_dat_attrs <- function(line_node) {
+  session_id <- line_node |> html_attr("session_id")
+  speaker_id <- line_node |> html_attr("mepid")
+  state <- line_node |> html_attr("state")
+  session_seq <- line_node |> html_attr("seq_speaker_id")
+
+  tibble(session_id, speaker_id, state, session_seq)
+}
+
+# Extract attributes from all line nodes
+ns_dat_attrs <-
+  ns_dat_lines |>
+  map_dfr(extract_dat_attrs)
+
+nns_dat_attrs <-
+  nns_dat_lines |>
+  map_dfr(extract_dat_attrs)
+
+tra_dat_attrs <-
+  tra_dat_lines |>
+  map_dfr(extract_dat_attrs)
+
+# Read in *.tok* file by lines
+ns_tok_lines <-
+  read_lines("../data/original/ENNTT/natives.tok")
+
+nns_tok_lines <-
+  read_lines("../data/original/ENNTT/nonnatives.tok")
+
+tra_tok_lines <-
+  read_lines("../data/ENNTT/original/translations.tok")
+
+ns_dat <-
+  ns_dat_attrs |>
+  mutate(text = ns_tok_lines) |>
+  mutate(type = "native")
+
+nns_dat <- 
+  nns_dat_attrs |>
+  mutate(text = nns_tok_lines) |>
+  mutate(type = "non-native")
+
+tra_dat <- 
+  tra_dat_attrs |>
+  mutate(text = tra_tok_lines) |>
+  mutate(type = "translation")
+
+ENNTT_dat <- full_join(ns_dat, nns_dat, tra_dat)
+
+write_csv(ns_dat,
+  file = "../data/derived/ns_curated.csv"
+)
+
+write_csv(nns_dat,
+  file = "../data/derived/nns_curated.csv"
+)
+
+write_csv(tra_dat,
+  file = "../data/derived/tra_curated.csv"
+)
+
+write_csv(ENNTT_dat,
+  file = "../data/derived/enntt_curated.csv"
+)
+
+# Create data dictionary
+create_data_dictionary(
+  data = ENNTT,
+  file_path = "../data/derived/enntt_data_dictionary.csv"
+)
+```
+
+```{r, cache: true}
+#| label: transform-data
+#| echo: false
+#| message: false
+
+# Transform
+
+# Model and directory
+model <- "english"
+model_dir <- "../data/"
+
+# Prepare the dataset to be annotated
+enntt_natives_prepped_tbl <-
+  ns_dat |>
+  mutate(doc_id = row_number()) |>
+  select(doc_id, text)
+
+enntt_translationa_prepped_tbl <-
+  tra_dat |>
+  mutate(doc_id = row_number()) |>
+  select(doc_id, text)
+
+# Annotate the dataset
+enntt_natives_ann_tbl <-
+  udpipe(
+    x = enntt_natives_prepped_tbl,
+    object = model,
+    model_dir = model_dir
+  ) |>
+  tibble()
+
+enntt_translations_ann_tbl <-
+  udpipe(
+    x = enntt_translations_prepped_tbl,
+    object = model,
+    model_dir = model_dir
+  ) |>
+  tibble()
+
+# Calculate the number of T-units and words per sentence
+enntt_natives_syn_comp_tbl <-
+  enntt_natives_ann_tbl |>
+  group_by(doc_id, sentence_id) |>
+  summarize(
+    main_clauses = sum(dep_rel %in% c("ROOT", "cop")),
+    subord_clauses = sum(dep_rel %in% c("ccomp", "xcomp", "acl:relcl")),
+    t_units = main_clauses + subord_clauses,
+    word_len = n()
+  ) |>
+  ungroup()
+
+enntt_translations_syn_comp_tbl <-
+  enntt_translations_ann_tbl |>
+  group_by(doc_id, sentence_id) |>
+  summarize(
+    main_clauses = sum(dep_rel %in% c("ROOT", "cop")),
+    subord_clauses = sum(dep_rel %in% c("ccomp", "xcomp", "acl:relcl")),
+    t_units = main_clauses + subord_clauses,
+    word_len = n()
+  ) |>
+  ungroup()
+
+# Select columns
+enntt_natives_syn_comp_tbl <-
+  enntt_natives_syn_comp_tbl |>
+  select(doc_id, sentence_id, t_units, word_len)
+
+enntt_translations_syn_comp_tbl <-
+  enntt_translations_syn_comp_tbl |>
+  select(doc_id, sentence_id, t_units, word_len)
+
+# Reduce annotated data frames to unique sentences
+enntt_natives_ann_distinct <-
+  enntt_natives_ann_tbl |>
+  distinct(doc_id, sentence_id, sentence)
+
+enntt_translations_ann_distinct <-
+  enntt_translations_ann_tbl |>
+  distinct(doc_id, sentence_id, sentence)
+
+# Join the native datasets
+enntt_natives_transformed_tbl <-
+  left_join(
+    x = enntt_natives_syn_comp_tbl,
+    y = enntt_natives_ann_distinct,
+    by = c("doc_id", "sentence_id")
+  )
+
+# Join the translations datasets
+enntt_translations_transformed_tbl <-
+  left_join(
+    x = enntt_translations_syn_comp_tbl,
+    y = enntt_translations_ann_distinct,
+    by = c("doc_id", "sentence_id")
+  )
+
+# Concatenate the datasets
+enntt_transformed_tbl <-
+  bind_rows(
+    enntt_natives_transformed_tbl,
+    enntt_translations_transformed_tbl
+  )
+
+# Overwrite the doc_id column with a unique identifier
+enntt_transformed_tbl <-
+  enntt_transformed_tbl |>
+  mutate(doc_id = row_number()) |>
+  select(doc_id, type, t_units, word_len, text = sentence)
+```
+
+### Features
+
+<!--
+
+a description of linguistic and non-linguistic features you will use and why you think they will be useful in this task
+a description of the process you aim to use to engineer these features
+
+-->
+
+(@) Syntactic complexity seems to length of unit, amount of coordination, degree of phrasal sophistication [ai2013corpus]. So `dep_rel` which shows syntactic relationships may help to measure syntactic complexity. However, it needs an identity to differentiate them, so `dox_id` is needed for identify them.
+
+(@) The number of observations in natives and translations are very imbalance which needs to downweight or balance them, so `step_downsample()` can be used to remove rows of a data set. 
+
+### Modeling process
+
+<!--
+
+a description of the high-level modeling process you will be using to perform the task (e.g. classification, regression, etc.)
+for each modeling process, a description of the specific modeling process you will be using to perform the task (e.g. classification using a random forest model, etc.)
+a description of the process you will use to evaluate the performance of the model(s)
+
+-->
+
+(@) It seems this modeling process needs `doc_type` which has two level `native` and `translation`. The measure of `syntactic_complexity` is determined by `t_units` and `word_len`. So regression model is preferred.
+
+(@) identify - based on the idealized format, this study analyzed the relationship between document type and syntactic complexity. Syntactic complexity is related to syntactic relationship and length of words; inspect - checking missing values, distribution of the variables, the relationship between the variables and normalize the variables if needed; interrogate - specify the model to point out the relationship between the response and explanatory variables, calculate model statistics by using linear regression model, 
+create a null distribution, calculate the p value; interpret - calculate the confidence interval, calculate the explanatory variable.
+
+### Results
