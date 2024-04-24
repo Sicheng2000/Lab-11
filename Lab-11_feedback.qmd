@@ -1,0 +1,35 @@
+---
+title: "Lab 11 Feedback"
+author: Sicheng Wang
+format: 
+  pdf:
+    number-sections: true
+    toc: true
+    toc-depth: 1
+---
+
+# Take-away
+
+(@) The purpose of the presentation is to engage the audience and gather suggestions or feedback, whereas the paper itself serves as a comprehensive written documentation of the research.
+
+(@) Consideration of our target audience is essential before presenting our research.
+
+(@) Tracking the research process helps individuals maintain clarity regarding the subsequent steps and facilitates easy recall and review.
+
+(@) `renv` records the packages (version, name) utilized in the project. The `renv.lock` file, similar to the `DESCRIPTION` file, documents the R environment.
+
+# Challenges
+I find documenting the research process, such as adding code comments and taking notes, challenging because it requires me to pause to write notes, which can disrupt my flow of thought regarding what code to write next. Additionally, there are times when the code seems so self-explanatory to me that I feel there is no need to add additional comments.
+
+# Resources
+For creating presentations with Quarto documents, I am interested in customizing font sizes. In [recipe 11](https://qtalr.github.io/resources/recipes/recipe-11/) it discusses making titles smaller by using `## Slide Title {.smaller}`. However, I want to specify a specific font size, so I found that there is default themes provided by `revealjs` or I can customize a `scss` file to adjust font color and size, as explained in the [Reveal Themes] (https://quarto.org/docs/presentations/revealjs/themes.html). Regarding table creation, in  [recipe 11](https://qtalr.github.io/resources/recipes/recipe-11/), it appears that tables need to be manually formatted using Markdown syntax:
+
+|Header 1| Header 2|
+|--------|--------|
+|Cell 1 |Cell 2 |
+: Caption for the table
+
+Unfortunately, there isn't a shortcut for creating tables in R Markdown. However, I found that I can avoid typing `|` and `-` through code block to create a frame and then use `kable()` to render it, as described in the [Manual table in R-Markdown](https://stackoverflow.com/questions/76996026/manual-table-in-r-markdown).
+
+# Explore
+This video, [Beautiful reports and presentations with Quarto](https://www.youtube.com/watch?v=hbf7Ai3jnxY), covers the content discussed in class. Additionally, it explores setting background images, highlighting different words, and discusses the advantages of using HTML.
